@@ -50,7 +50,7 @@ function loadOBJ(renderer, path, name) {
                 if (mat.map != null)
                   colorMap = new Texture(renderer.gl, mat.map.image);
                 
-                // [HW] 使用InternalShader中的PhongMaterial
+                // [HW0] 使用InternalShader中的PhongMaterial
                 let myMaterial = new PhongMaterial(
                   mat.color.toArray(),
                   colorMap,

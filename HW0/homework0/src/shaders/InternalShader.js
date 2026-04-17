@@ -77,7 +77,7 @@ void main(void) {
 `;
 
 
-// == [HW] 定义Phong着色器 == 
+// == [HW0] 定义Phong着色器 == 
 
 const PhongVertexShader = `
 attribute vec3 aVertexPosition;
