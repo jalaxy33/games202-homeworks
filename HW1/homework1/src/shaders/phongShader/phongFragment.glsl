@@ -114,20 +114,11 @@ float PCSS(sampler2D shadowMap, vec4 coords) {
 
 // [HW1] stage 1: 硬阴影shadow map
 // << EDIT-START
-// 自适应Shadow Bias算法 https://zhuanlan.zhihu.com/p/370951892
-float getShadowBias(float c, float filterRadiusUV) {
-  vec3 normal = normalize(vNormal);
-  vec3 lightDir = normalize(uLightPos - vFragPos);
-  float fragSize = (1. + ceil(filterRadiusUV)) * (FRUSTUM_SIZE / SHADOW_MAP_SIZE / 2.);
-  return max(fragSize, fragSize * (1.0 - dot(normal, lightDir))) * c;
-}
-
 // 修改了参数，以使用自适应 shadow bias
-float useShadowMap(sampler2D shadowMap, vec4 shadowCoord, float biasC, float filterRadiusUV) {
+float useShadowMap(sampler2D shadowMap, vec4 shadowCoord) {
   float depth = unpack(texture2D(shadowMap, shadowCoord.xy));
   float cur_depth = shadowCoord.z;
-  float bias = getShadowBias(biasC, filterRadiusUV);
-  if(cur_depth - bias >= depth + EPS) {
+  if(cur_depth >= depth + EPS) {
     return 0.;
   } else {
     return 1.0;
@@ -165,14 +156,9 @@ void main(void) {
   //把[-1,1]的NDC坐标转换为[0,1]的坐标
   shadowCoord = shadowCoord * 0.5 + 0.5;
 
-
-  // 无PCF时的Shadow Bias
-  float bias = .4;
-
   float visibility = 1.0;
   // stage 1: 硬阴影shadow map
-  visibility = useShadowMap(uShadowMap, vec4(shadowCoord, 1.0), bias, 0.);
-
+  visibility = useShadowMap(uShadowMap, vec4(shadowCoord, 1.0));
   // visibility = PCF(uShadowMap, vec4(shadowCoord, 1.0));
   // visibility = PCSS(uShadowMap, vec4(shadowCoord, 1.0));
 
