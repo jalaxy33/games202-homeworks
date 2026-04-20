@@ -24,11 +24,16 @@ varying highp vec3 vNormal;
 #define PI 3.141592653589793
 #define PI2 6.283185307179586
 
-// [HW1] 阴影贴图相关变量
 // >> EDIT-START
+// [HW1] 阴影贴图相关变量
 #define SHADOW_MAP_SIZE 2048.
 #define FRUSTUM_SIZE  400.
+// [HW1] PCF相关变量
 #define FILTER_RADIUS 10.
+// [HW1] PCSS相关变量
+#define NEAR_PLANE 0.01
+#define LIGHT_WORLD_SIZE 5.
+#define LIGHT_SIZE_UV LIGHT_WORLD_SIZE / FRUSTUM_SIZE
 // << EDIT-END
 
 uniform sampler2D uShadowMap;
@@ -93,22 +98,6 @@ void uniformDiskSamples(const in vec2 randomSeed) {
   }
 }
 
-float findBlocker(sampler2D shadowMap, vec2 uv, float zReceiver) {
-  return 1.0;
-}
-
-float PCSS(sampler2D shadowMap, vec4 coords) {
-
-  // STEP 1: avgblocker depth
-
-  // STEP 2: penumbra size
-
-  // STEP 3: filtering
-
-  return 1.0;
-
-}
-
 // [HW1] stage 1: 硬阴影shadow map
 // >> EDIT-START
 //自适应Shadow Bias算法 https://zhuanlan.zhihu.com/p/370951892
@@ -143,6 +132,49 @@ float PCF(sampler2D shadowMap, vec4 coords, float biasC, float filterRadiusUV) {
 }
 // << EDIT-END
 
+// [HW1] stage 3: PCSS
+// >> EDIT-START
+float findBlocker(sampler2D shadowMap, vec2 uv, float zReceiver) {
+  int blockerNum = 0;
+  float blockDepth = 0.;
+
+  float posZFromLight = vPositionFromLight.z;
+
+  float searchRadius = LIGHT_SIZE_UV * (posZFromLight - NEAR_PLANE) / posZFromLight;
+
+  poissonDiskSamples(uv);
+  for(int i = 0; i < NUM_SAMPLES; i++) {
+    float shadowDepth = unpack(texture2D(shadowMap, uv + poissonDisk[i] * searchRadius));
+    if(zReceiver > shadowDepth) {
+      blockerNum++;
+      blockDepth += shadowDepth;
+    }
+  }
+
+  if(blockerNum == 0)
+    return -1.;
+  else
+    return blockDepth / float(blockerNum);
+}
+
+float PCSS(sampler2D shadowMap, vec4 coords, float biasC) {
+  float zReceiver = coords.z;
+
+  // STEP 1: avgblocker depth 
+  float avgBlockerDepth = findBlocker(shadowMap, coords.xy, zReceiver);
+
+  if(avgBlockerDepth < -EPS)
+    return 1.0;
+
+  // STEP 2: penumbra size
+  float penumbra = (zReceiver - avgBlockerDepth) * LIGHT_SIZE_UV / avgBlockerDepth;
+  float filterRadiusUV = penumbra;
+
+  // STEP 3: filtering
+  return PCF(shadowMap, coords, biasC, filterRadiusUV);
+}
+// << EDIT-END
+
 vec3 blinnPhong() {
   vec3 color = texture2D(uSampler, vTextureCoord).rgb;
   color = pow(color, vec3(2.2));
@@ -174,14 +206,14 @@ void main(void) {
   shadowCoord = shadowCoord * 0.5 + 0.5;
 
   // shadow bias
-  float bias = .08;
+  float biasC = .1;
   // PCF采样范围
   float filterRadiusUV = FILTER_RADIUS / SHADOW_MAP_SIZE;
 
   float visibility = 1.0;
-  visibility = useShadowMap(uShadowMap, vec4(shadowCoord, 1.0), bias, 0.);
-  // visibility = PCF(uShadowMap, vec4(shadowCoord, 1.0), bias, filterRadiusUV);
-  // visibility = PCSS(uShadowMap, vec4(shadowCoord, 1.0));
+  // visibility = useShadowMap(uShadowMap, vec4(shadowCoord, 1.0), biasC, 0.);
+  // visibility = PCF(uShadowMap, vec4(shadowCoord, 1.0), biasC, filterRadiusUV);
+  visibility = PCSS(uShadowMap, vec4(shadowCoord, 1.0), biasC);
 
   vec3 phongColor = blinnPhong();
 
