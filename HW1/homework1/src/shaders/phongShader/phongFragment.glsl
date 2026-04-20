@@ -28,6 +28,7 @@ varying highp vec3 vNormal;
 // >> EDIT-START
 #define SHADOW_MAP_SIZE 2048.
 #define FRUSTUM_SIZE  400.
+#define FILTER_RADIUS 10.
 // << EDIT-END
 
 uniform sampler2D uShadowMap;
@@ -96,10 +97,6 @@ float findBlocker(sampler2D shadowMap, vec2 uv, float zReceiver) {
   return 1.0;
 }
 
-float PCF(sampler2D shadowMap, vec4 coords) {
-  return 1.0;
-}
-
 float PCSS(sampler2D shadowMap, vec4 coords) {
 
   // STEP 1: avgblocker depth
@@ -113,18 +110,38 @@ float PCSS(sampler2D shadowMap, vec4 coords) {
 }
 
 // [HW1] stage 1: 硬阴影shadow map
-// << EDIT-START
-// 修改了参数，以使用自适应 shadow bias
-float useShadowMap(sampler2D shadowMap, vec4 shadowCoord) {
+// >> EDIT-START
+//自适应Shadow Bias算法 https://zhuanlan.zhihu.com/p/370951892
+float getShadowBias(float c, float filterRadiusUV) {
+  vec3 normal = normalize(vNormal);
+  vec3 lightDir = normalize(uLightPos - vFragPos);
+  float fragSize = (1. + ceil(filterRadiusUV)) * (FRUSTUM_SIZE / SHADOW_MAP_SIZE / 2.);
+  return max(fragSize, fragSize * (1.0 - dot(normal, lightDir))) * c;
+}
+
+float useShadowMap(sampler2D shadowMap, vec4 shadowCoord, float biasC, float filterRadiusUV) {
   float depth = unpack(texture2D(shadowMap, shadowCoord.xy));
   float cur_depth = shadowCoord.z;
-  if(cur_depth >= depth + EPS) {
-    return 0.;
-  } else {
-    return 1.0;
-  }
+  float bias = getShadowBias(biasC, filterRadiusUV);
+  return (cur_depth - bias >= depth + EPS) ? 0.0 : 1.0;
 }
-// >> EDIT-END
+// << EDIT-END
+
+// [HW1] stage 2: PCF
+// >> EDIT-START
+float PCF(sampler2D shadowMap, vec4 coords, float biasC, float filterRadiusUV) {
+  poissonDiskSamples(coords.xy);  // 根据uv生成随机数，结果保存在poissonDisk数组中
+  float visibility = 0.0;
+  for(int i = 0; i < PCF_NUM_SAMPLES; i++) {
+    vec2 offset = poissonDisk[i] * filterRadiusUV;
+    float shadowDepth = useShadowMap(shadowMap, coords + vec4(offset, 0.0, 0.0), biasC, filterRadiusUV);
+    if(coords.z > shadowDepth + EPS) {
+      visibility++;
+    }
+  }
+  return 1.0 - visibility / float(PCF_NUM_SAMPLES);
+}
+// << EDIT-END
 
 vec3 blinnPhong() {
   vec3 color = texture2D(uSampler, vTextureCoord).rgb;
@@ -156,10 +173,14 @@ void main(void) {
   //把[-1,1]的NDC坐标转换为[0,1]的坐标
   shadowCoord = shadowCoord * 0.5 + 0.5;
 
+  // shadow bias
+  float bias = .08;
+  // PCF采样范围
+  float filterRadiusUV = FILTER_RADIUS / SHADOW_MAP_SIZE;
+
   float visibility = 1.0;
-  // stage 1: 硬阴影shadow map
-  visibility = useShadowMap(uShadowMap, vec4(shadowCoord, 1.0));
-  // visibility = PCF(uShadowMap, vec4(shadowCoord, 1.0));
+  visibility = useShadowMap(uShadowMap, vec4(shadowCoord, 1.0), bias, 0.);
+  // visibility = PCF(uShadowMap, vec4(shadowCoord, 1.0), bias, filterRadiusUV);
   // visibility = PCSS(uShadowMap, vec4(shadowCoord, 1.0));
 
   vec3 phongColor = blinnPhong();
